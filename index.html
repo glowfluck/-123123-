@@ -569,7 +569,7 @@ let passkeyMode = 'login';
 function telegramLogin() {
   const botId = '8156178722'; // Вставь сюда ID своего бота
   const origin = encodeURIComponent(location.origin || 'https://yoursite.com');
-  const url = `https://oauth.telegram.org/auth?bot_id=${botId}&origin=${origin}&return_to=${origin}&embed=1&request_access=write`;
+  const url = `https://oauth.telegram.org/auth?bot_id=${8156178722}&origin=${origin}&return_to=${origin}&embed=1&request_access=write`;
   const w = window.open(url, 'tg_auth', 'width=550,height=600,left=' + (screen.width/2 - 275) + ',top=' + (screen.height/2 - 300));
   const timer = setInterval(() => {
     if (w && w.closed) {
