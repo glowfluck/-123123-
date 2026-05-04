@@ -661,71 +661,44 @@ function closePasskeyModal() {
   document.getElementById('passkeyModal').classList.remove('show');
 }
 
-async function doPasskey(mode) {
-  if (!window.PublicKeyCredential) {
-    showToast(t('pk_not_supported'));
-    return;
-  }
-  // Имитируем HTTP 402 Payment Required
+function doPasskey(mode) {
+  // Passkey требует платной подписки → показываем 402
   showToast402(mode);
-  return;
-
-  try { // unreachable — kept for structure
-    if (mode === 'register') {
-      const cred = await navigator.credentials.create({
-        publicKey: {
-          challenge: crypto.getRandomValues(new Uint8Array(32)),
-          rp: {
-            name: "DzenVPN",
-            // ФИКС: location.hostname может быть пустым (file://), используем fallback
-            id: location.hostname || 'localhost'
-          },
-          user: {
-            id: crypto.getRandomValues(new Uint8Array(16)),
-            name: "dzenuser@dzen.vpn",
-            displayName: "DzenVPN User"
-          },
-          pubKeyCredParams: [
-            { alg: -7,   type: "public-key" },
-            { alg: -257, type: "public-key" }
-          ],
-          timeout: 60000,
-          attestation: "none"
-        }
-      });
-      if (cred) showToast402('register');
-    } else {
-      const cred = await navigator.credentials.get({
-        publicKey: {
-          challenge: crypto.getRandomValues(new Uint8Array(32)),
-          timeout: 60000,
-          userVerification: "preferred"
-        }
-      });
-      if (cred) showToast402('login');
-    }
-  } catch (e) {
-    if (e.name !== 'NotAllowedError') showToast(t('pk_error'));
-  }
 }
 
 // ============ TELEGRAM LOGIN ============
 function telegramLogin() {
-  // ФИКС 1: используем переменную botId, а не литерал числа в шаблоне
-  const botId  = '8156178722'; // ← вставьте ID своего бота
-  const origin = encodeURIComponent(location.origin || 'https://yoursite.com');
-  const url    = `https://oauth.telegram.org/auth?bot_id=${botId}&origin=${origin}&return_to=${origin}&embed=1&request_access=write`;
+  const BOT_ID = '8156178722';
+  // origin должен совпадать с доменом из BotFather /setdomain (только hostname, без https://)
+  const origin = location.origin || 'https://yoursite.com';
+  const url = 'https://oauth.telegram.org/auth'
+    + '?bot_id=' + BOT_ID
+    + '&origin=' + encodeURIComponent(origin)
+    + '&embed=1'
+    + '&request_access=write';
+  // embed=1 — Telegram сам закроет попап и пришлёт postMessage
 
-  window.open(url, 'tg_auth',
-    `width=550,height=600,left=${Math.round(screen.width / 2 - 275)},top=${Math.round(screen.height / 2 - 300)}`
+  const popup = window.open(
+    url,
+    'tg_auth',
+    'width=550,height=600,left=' + Math.round(screen.width / 2 - 275) + ',top=' + Math.round(screen.height / 2 - 300)
   );
+
+  if (!popup || popup.closed) {
+    showToast('⚠️ Popup заблокирован браузером. Разрешите всплывающие окна для этого сайта.');
+  }
 }
 
 // Получаем ответ от Telegram OAuth-попапа
 window.addEventListener('message', function(e) {
   if (e.origin !== 'https://oauth.telegram.org') return;
-  if (e.data && e.data.event === 'auth_result' && e.data.result && e.data.result.id) {
-    onTelegramAuth(e.data.result);
+  // Telegram может прислать данные как строку JSON или как объект
+  let data = e.data;
+  if (typeof data === 'string') {
+    try { data = JSON.parse(data); } catch(_) { return; }
+  }
+  if (data && data.event === 'auth_result' && data.result && data.result.id) {
+    onTelegramAuth(data.result);
   }
 });
 
@@ -771,27 +744,27 @@ function showToast402(mode) {
     }
   };
   const m = messages[currentLang] || messages['ru'];
-  // Create modal overlay
+  // Создаём или переиспользуем оверлей
   let overlay = document.getElementById('err402Overlay');
-  if (!overlay) {
-    overlay = document.createElement('div');
-    overlay.id = 'err402Overlay';
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:600;display:flex;align-items:center;justify-content:center;animation:fadeIn .2s';
-    overlay.innerHTML = `
-      <div style="background:#fff;border-radius:20px;padding:32px;width:90%;max-width:360px;box-shadow:0 16px 60px rgba(0,0,0,0.25);animation:fadeUp .3s ease;font-family:'Nunito',sans-serif;">
-        <div style="font-size:42px;text-align:center;margin-bottom:12px">⛔</div>
-        <h3 id="err402Title" style="font-size:18px;font-weight:800;color:#e03535;margin-bottom:10px;text-align:center"></h3>
-        <div id="err402Body" style="font-size:13px;color:#555;line-height:1.7;margin-bottom:22px"></div>
-        <button onclick="document.getElementById('err402Overlay').remove()"
-          style="width:100%;padding:13px;background:#3b6cf6;color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:700;font-family:'Nunito',sans-serif;cursor:pointer;">
-          OK
-        </button>
-      </div>`;
-    document.body.appendChild(overlay);
-    overlay.addEventListener('click', function(e){ if(e.target===overlay) overlay.remove(); });
-  }
+  if (overlay) overlay.remove(); // пересоздаём чтобы animation работала каждый раз
+
+  overlay = document.createElement('div');
+  overlay.id = 'err402Overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:600;display:flex;align-items:center;justify-content:center;animation:fadeIn .2s';
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:20px;padding:32px;width:90%;max-width:360px;box-shadow:0 16px 60px rgba(0,0,0,0.25);animation:fadeUp .3s ease;font-family:'Nunito',sans-serif;">
+      <div style="font-size:42px;text-align:center;margin-bottom:12px">⛔</div>
+      <h3 id="err402Title" style="font-size:18px;font-weight:800;color:#e03535;margin-bottom:10px;text-align:center"></h3>
+      <div id="err402Body" style="font-size:13px;color:#555;line-height:1.7;margin-bottom:22px"></div>
+      <button onclick="document.getElementById('err402Overlay').remove()"
+        style="width:100%;padding:13px;background:#3b6cf6;color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:700;font-family:'Nunito',sans-serif;cursor:pointer;">
+        OK
+      </button>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', function(ev){ if(ev.target===overlay) overlay.remove(); });
   document.getElementById('err402Title').textContent = m.title;
-  document.getElementById('err402Body').innerHTML = m.lines.map(l => `<p style="margin-bottom:6px">• ${l}</p>`).join('');
+  document.getElementById('err402Body').innerHTML = m.lines.map(l => '<p style="margin-bottom:6px">• ' + l + '</p>').join('');
 }
 
 // ============ TOAST ============
